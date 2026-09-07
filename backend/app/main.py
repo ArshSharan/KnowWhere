@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db.connection import lifespan
-from app.routers import documents
+from app.routers import documents, entities
 
 settings = get_settings()
 
@@ -33,7 +33,7 @@ app = FastAPI(
         "Related facts across documents are classified as corroborating, contradicting, "
         "or reconciled-by-context, with a human-readable explanation."
     ),
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -41,7 +41,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tightened in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,6 +49,7 @@ app.add_middleware(
 
 # Routers
 app.include_router(documents.router)
+app.include_router(entities.router)
 
 
 @app.get("/health", tags=["Meta"])
