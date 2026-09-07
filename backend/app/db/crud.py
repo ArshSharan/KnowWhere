@@ -327,3 +327,117 @@ async def upsert_fact_relationship(
             UUID(fact_a_id), UUID(fact_b_id), relationship, basis, explanation, confidence,
         )
     return str(row["id"])
+
+
+async def list_all_relationships(
+    pool: asyncpg.Pool,
+    relationship: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict]:
+    """
+    Return all relationship edges across all documents, joined with full metadata
+    for both Fact A and Fact B, plus source documents.
+    """
+    query = """
+        SELECT 
+            fr.*,
+            fa.attribute AS fact_a_attribute,
+            fa.value AS fact_a_value,
+            fa.unit AS fact_a_unit,
+            fa.fiscal_year AS fact_a_fiscal_year,
+            fa.page_number AS fact_a_page,
+            fa.verbatim_quote AS fact_a_quote,
+            ea.canonical_name AS fact_a_entity,
+            da.title AS fact_a_doc_title,
+            da.id::text AS fact_a_doc_id,
+            fb.attribute AS fact_b_attribute,
+            fb.value AS fact_b_value,
+            fb.unit AS fact_b_unit,
+            fb.fiscal_year AS fact_b_fiscal_year,
+            fb.page_number AS fact_b_page,
+            fb.verbatim_quote AS fact_b_quote,
+            eb.canonical_name AS fact_b_entity,
+            db.title AS fact_b_doc_title,
+            db.id::text AS fact_b_doc_id
+        FROM fact_relationships fr
+        JOIN facts fa ON fa.id = fr.fact_a_id
+        JOIN facts fb ON fb.id = fr.fact_b_id
+        JOIN entities ea ON ea.id = fa.entity_id
+        JOIN entities eb ON eb.id = fb.entity_id
+        JOIN documents da ON da.id = fa.document_id
+        JOIN documents db ON db.id = fb.document_id
+    """
+    args: list[Any] = []
+    if relationship:
+        query += " WHERE fr.relationship = $1"
+        args.append(relationship)
+        query += f" ORDER BY fr.confidence DESC, fr.created_at DESC LIMIT ${len(args)+1} OFFSET ${len(args)+2}"
+        args.extend([limit, offset])
+    else:
+        query += " ORDER BY fr.confidence DESC, fr.created_at DESC LIMIT $1 OFFSET $2"
+        args.extend([limit, offset])
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(query, *args)
+    return [_record_to_dict(r) for r in rows]
+
+
+async def search_facts(
+    pool: asyncpg.Pool,
+    query_embedding: Optional[list[float]] = None,
+    query_text: Optional[str] = None,
+    limit: int = 30,
+) -> list[dict]:
+    """
+    Semantic search over facts using vector similarity (<=> cosine distance).
+    Falls back to ILIKE text search if embedding is not provided.
+    """
+    async with pool.acquire() as conn:
+        if query_embedding:
+            rows = await conn.fetch(
+                """
+                SELECT 
+                    f.*,
+                    e.canonical_name AS entity_name,
+                    ft.label AS fact_type_label,
+                    d.title AS document_title,
+                    1 - (f.embedding <=> $1::vector) AS similarity
+                FROM facts f
+                JOIN entities e ON e.id = f.entity_id
+                JOIN fact_types ft ON ft.id = f.fact_type_id
+                JOIN documents d ON d.id = f.document_id
+                WHERE f.embedding IS NOT NULL
+                ORDER BY f.embedding <=> $1::vector ASC
+                LIMIT $2
+                """,
+                str(query_embedding),
+                limit,
+            )
+            return [_record_to_dict(r) for r in rows]
+
+        pattern = f"%{query_text or ''}%"
+        rows = await conn.fetch(
+            """
+            SELECT 
+                f.*,
+                e.canonical_name AS entity_name,
+                ft.label AS fact_type_label,
+                d.title AS document_title,
+                1.0 AS similarity
+            FROM facts f
+            JOIN entities e ON e.id = f.entity_id
+            JOIN fact_types ft ON ft.id = f.fact_type_id
+            JOIN documents d ON d.id = f.document_id
+            WHERE f.attribute ILIKE $1 
+               OR f.value ILIKE $1 
+               OR f.verbatim_quote ILIKE $1
+               OR e.canonical_name ILIKE $1
+            ORDER BY f.created_at DESC
+            LIMIT $2
+            """,
+            pattern,
+            limit,
+        )
+        return [_record_to_dict(r) for r in rows]
+

@@ -48,6 +48,8 @@ backend/scratch/
 
 # Uploaded PDFs (large files — stored in R2, not git)
 uploads/
+backend/uploads/
 
 # Alembic compiled migrations (keep source, skip compiled)
 backend/alembic/versions/__pycache__/
+

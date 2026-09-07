@@ -10,12 +10,15 @@ GET  /facts/{id}/relationships — relationship edges for one fact
 """
 
 from __future__ import annotations
+import json
 import logging
 from typing import Any, Optional
 
 import asyncpg
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Query, Response
+from openai import AsyncOpenAI
 
+from app.config import get_settings
 from app.db.connection import get_pool
 from app.db import crud
 from app.models.api import (
@@ -23,10 +26,14 @@ from app.models.api import (
     DocumentWithFactsOut,
     EvidenceOut,
     FactOut,
+    FactSearchResultOut,
+    GlobalRelationshipOut,
     RelationshipOut,
     UploadResponse,
 )
+from app.services.embedder import embed_texts
 from app.services.ingestion_worker import compute_content_hash, ingest_document
+from app.services import r2_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -38,6 +45,15 @@ router = APIRouter()
 
 def _row_to_fact_out(row: dict) -> FactOut:
     """Convert a facts DB row (with joined entity_name / fact_type_label) to FactOut."""
+    qualifiers_raw = row.get("qualifiers") or {}
+    if isinstance(qualifiers_raw, str):
+        try:
+            qualifiers = json.loads(qualifiers_raw)
+        except Exception:
+            qualifiers = {}
+    else:
+        qualifiers = qualifiers_raw
+
     return FactOut(
         id=row["id"],
         entity=row.get("entity_name") or row.get("entity", ""),
@@ -51,13 +67,14 @@ def _row_to_fact_out(row: dict) -> FactOut:
         period_start=str(row["period_start"]) if row.get("period_start") else None,
         period_end=str(row["period_end"]) if row.get("period_end") else None,
         as_of_date=str(row["as_of_date"]) if row.get("as_of_date") else None,
-        qualifiers=row.get("qualifiers") or {},
+        qualifiers=qualifiers,
         evidence=EvidenceOut(
             verbatim_quote=row.get("verbatim_quote", ""),
             page_number=row.get("page_number", 0),
             evidence_confidence=row.get("evidence_confidence", "high"),
         ),
     )
+
 
 
 def _row_to_doc_out(row: dict) -> DocumentOut:
@@ -119,6 +136,14 @@ async def upload_document(
     )
     doc_id = doc["id"]
 
+    # Store PDF file (R2 with local filesystem fallback)
+    try:
+        source_uri = await r2_client.store_pdf(doc_id, file.filename, pdf_bytes)
+        async with pool.acquire() as conn:
+            await conn.execute("UPDATE documents SET source_uri = $1 WHERE id = $2", source_uri, doc_id)
+    except Exception as e:
+        logger.warning(f"[{doc_id}] Failed to store PDF file: {e}")
+
     # Start background ingestion (non-blocking)
     background_tasks.add_task(ingest_document, doc_id, pdf_bytes, pool)
     logger.info(f"Document {doc_id} queued for ingestion (file={file.filename}).")
@@ -166,8 +191,89 @@ async def get_document_facts(doc_id: str, pool: asyncpg.Pool = Depends(get_pool)
 
 
 # ---------------------------------------------------------------------------
-# Fact endpoints
+# Fact endpoints (Static paths MUST precede parameterized {fact_id} paths)
 # ---------------------------------------------------------------------------
+
+@router.get("/facts/search", response_model=list[FactSearchResultOut], tags=["Facts"])
+async def search_facts_endpoint(
+    q: str = Query(..., min_length=1, description="Semantic search query across facts"),
+    limit: int = Query(30, ge=1, le=100),
+    pool: asyncpg.Pool = Depends(get_pool),
+):
+    """
+    Semantic search over the Fact Knowledge Layer using vector embeddings + pgvector.
+    Falls back gracefully to keyword search if embeddings fail.
+    """
+    settings = get_settings()
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+    query_embedding = None
+    try:
+        embeddings = await embed_texts([q], client)
+        if embeddings and embeddings[0]:
+            query_embedding = embeddings[0]
+    except Exception as e:
+        logger.warning(f"Embedding generation failed for query '{q}': {e}")
+
+    rows = await crud.search_facts(pool, query_embedding=query_embedding, query_text=q, limit=limit)
+
+    results = []
+    for r in rows:
+        fact_out = _row_to_fact_out(r)
+        results.append(
+            FactSearchResultOut(
+                **fact_out.model_dump(),
+                similarity=float(r.get("similarity", 1.0)),
+                document_title=r.get("document_title"),
+            )
+        )
+    return results
+
+
+@router.get("/relationships", response_model=list[GlobalRelationshipOut], tags=["Facts"])
+async def list_all_relationships_endpoint(
+    relationship: Optional[str] = Query(None, description="Filter: corroborates | contradicts | reconciled_by_context"),
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    pool: asyncpg.Pool = Depends(get_pool),
+):
+    """
+    Global feed of cross-document reconciliation edges with human-readable explanations.
+    Powers the Reconciliation Hub and showcases the 4 required cases.
+    """
+    rows = await crud.list_all_relationships(pool, relationship=relationship, limit=limit, offset=offset)
+    return [
+        GlobalRelationshipOut(
+            id=r["id"],
+            fact_a_id=r["fact_a_id"],
+            fact_b_id=r["fact_b_id"],
+            fact_a_entity=r.get("fact_a_entity"),
+            fact_a_attribute=r.get("fact_a_attribute"),
+            fact_a_value=r.get("fact_a_value"),
+            fact_a_unit=r.get("fact_a_unit"),
+            fact_a_fiscal_year=r.get("fact_a_fiscal_year"),
+            fact_a_page=r.get("fact_a_page"),
+            fact_a_quote=r.get("fact_a_quote"),
+            fact_a_doc_title=r.get("fact_a_doc_title"),
+            fact_a_doc_id=r.get("fact_a_doc_id"),
+            fact_b_entity=r.get("fact_b_entity"),
+            fact_b_attribute=r.get("fact_b_attribute"),
+            fact_b_value=r.get("fact_b_value"),
+            fact_b_unit=r.get("fact_b_unit"),
+            fact_b_fiscal_year=r.get("fact_b_fiscal_year"),
+            fact_b_page=r.get("fact_b_page"),
+            fact_b_quote=r.get("fact_b_quote"),
+            fact_b_doc_title=r.get("fact_b_doc_title"),
+            fact_b_doc_id=r.get("fact_b_doc_id"),
+            relationship=r["relationship"],
+            basis=r["basis"],
+            explanation=r["explanation"],
+            confidence=r["confidence"],
+            created_at=str(r.get("created_at", "")),
+        )
+        for r in rows
+    ]
+
 
 @router.get("/facts/{fact_id}", response_model=FactOut, tags=["Facts"])
 async def get_fact(fact_id: str, pool: asyncpg.Pool = Depends(get_pool)):
@@ -203,3 +309,24 @@ async def get_fact_relationships(fact_id: str, pool: asyncpg.Pool = Depends(get_
         )
         for r in rows
     ]
+
+
+@router.get("/documents/{doc_id}/file", tags=["Documents"])
+async def get_document_file(doc_id: str, pool: asyncpg.Pool = Depends(get_pool)):
+    """Stream source PDF bytes for viewing in UI / evidence verification."""
+    doc = await crud.get_document(pool, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id} not found.")
+
+    pdf_bytes = r2_client.get_pdf_bytes(doc_id, doc.get("source_uri") or "")
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="PDF content not found.")
+
+    filename = doc.get("title") or f"{doc_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+

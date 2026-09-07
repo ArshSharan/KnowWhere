@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: knowwhere-backend
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: EXTRACTION_MODEL
+        value: gpt-5.6-luna
+      - key: RECONCILIATION_MODEL
+        value: gpt-5.6-sol
+      - key: EMBEDDING_MODEL
+        value: text-embedding-3-small

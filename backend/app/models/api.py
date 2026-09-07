@@ -62,7 +62,30 @@ class RelationshipOut(BaseModel):
     created_at: str
 
 
+class GlobalRelationshipOut(RelationshipOut):
+    fact_a_value: Optional[str] = None
+    fact_a_unit: Optional[str] = None
+    fact_a_fiscal_year: Optional[str] = None
+    fact_a_page: Optional[int] = None
+    fact_a_quote: Optional[str] = None
+    fact_a_doc_title: Optional[str] = None
+    fact_a_doc_id: Optional[str] = None
+    fact_b_value: Optional[str] = None
+    fact_b_unit: Optional[str] = None
+    fact_b_fiscal_year: Optional[str] = None
+    fact_b_page: Optional[int] = None
+    fact_b_quote: Optional[str] = None
+    fact_b_doc_title: Optional[str] = None
+    fact_b_doc_id: Optional[str] = None
+
+
+class FactSearchResultOut(FactOut):
+    similarity: float = 1.0
+    document_title: Optional[str] = None
+
+
 class UploadResponse(BaseModel):
     doc_id: str
     status: str
     duplicate: bool = False
+
