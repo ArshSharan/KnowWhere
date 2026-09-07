@@ -69,7 +69,7 @@ async def ingest_document(
 
         # ── 4. LLM extraction ─────────────────────────────────────────────
         all_extracted = await extract_all_facts(pages, client, batch_size=8)
-        raw_facts = [f.model_dump() for f in all_extracted]
+        raw_facts = [f.to_dict() for f in all_extracted]
         logger.info(f"[{doc_id}] LLM returned {len(raw_facts)} raw facts.")
 
         # ── 5. Quote validation ────────────────────────────────────────────

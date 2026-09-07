@@ -95,7 +95,6 @@ async def extract_facts_from_batch(
             },
         ],
         response_format=ExtractionResponse,
-        temperature=0,  # deterministic extraction
     )
 
     result = response.choices[0].message.parsed

@@ -25,11 +25,32 @@ logger = logging.getLogger(__name__)
 
 def _asyncpg_url(database_url: str) -> str:
     """
-    Convert a SQLAlchemy-style URL to a raw asyncpg URL.
-    Strips the '+asyncpg' dialect suffix if present.
-    e.g. postgresql+asyncpg://user:pass@host/db -> postgresql://user:pass@host/db
+    Convert a SQLAlchemy-style or Supabase URL to a sanitized asyncpg URL.
+    - Strips dialect suffix '+asyncpg'
+    - Strips outer quotes and bracket notation
+    - URL-encodes special characters in passwords
     """
-    return database_url.replace("postgresql+asyncpg://", "postgresql://")
+    import re
+    from urllib.parse import quote_plus, unquote
+
+    url = database_url.strip().strip('"').strip("'")
+    url = url.replace("postgresql+asyncpg://", "postgresql://")
+    url = re.sub(r'\[([^\]]+)\]', r'\1', url)
+
+    m = re.match(
+        r'^(?P<scheme>[^:]+)://(?P<user>[^:]+):(?P<password>.+)@(?P<host>[^:/]+)(:(?P<port>\d+))?/(?P<dbname>.+)$',
+        url
+    )
+    if m:
+        d = m.groupdict()
+        user = d['user']
+        password = quote_plus(unquote(d['password']))
+        host = d['host']
+        port = d['port'] or "5432"
+        dbname = d['dbname']
+        return f"{d['scheme']}://{user}:{password}@{host}:{port}/{dbname}"
+
+    return url
 
 
 @asynccontextmanager
@@ -45,7 +66,8 @@ async def lifespan(app: FastAPI):
                 min_size=2,
                 max_size=10,
                 command_timeout=60,
-                ssl="require",   # Supabase requires SSL
+                ssl="require",          # Supabase requires SSL
+                statement_cache_size=0, # Required for PgBouncer / Supabase Pooler compatibility
             )
             logger.info("Database pool created successfully.")
         except Exception as e:

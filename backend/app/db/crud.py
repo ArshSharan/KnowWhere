@@ -10,6 +10,7 @@ Phase 2 will extend: entity embedding lookup, fact_types embedding lookup, recon
 
 from __future__ import annotations
 import hashlib
+import json
 import logging
 from datetime import date, datetime
 from typing import Any, Optional
@@ -213,7 +214,7 @@ async def create_fact(
                 $1, $2, $3,
                 $4, $5, $6, $7,
                 $8, $9, $10, $11,
-                $12, $13, $14,
+                $12::jsonb, $13, $14,
                 $15, $16
             )
             RETURNING id
@@ -227,7 +228,7 @@ async def create_fact(
             _parse_date(fact_data.get("period_end")),
             _parse_date(fact_data.get("as_of_date")),
             fact_data.get("fiscal_year"),
-            fact_data.get("qualifiers") or {},
+            json.dumps(fact_data.get("qualifiers") or {}),
             fact_data.get("verbatim_quote", ""),
             fact_data.get("page_number", 0),
             fact_data.get("evidence_confidence", "high"),

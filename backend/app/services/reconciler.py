@@ -111,7 +111,6 @@ async def reconcile_pair(
             {"role": "user", "content": user_content},
         ],
         response_format=ReconciliationResult,
-        temperature=0,
     )
 
     result = response.choices[0].message.parsed

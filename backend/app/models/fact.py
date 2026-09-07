@@ -97,6 +97,11 @@ class Fact(BaseModel):
 # LLM extraction response schema
 # ---------------------------------------------------------------------------
 
+class QualifierItem(BaseModel):
+    key: str = Field(description="Qualifier key, e.g. 'basis', 'scope', 'revision_status'")
+    value: str = Field(description="Qualifier value, e.g. 'standalone', 'consolidated', 'restated'")
+
+
 class ExtractedFact(BaseModel):
     """Schema fed to OpenAI Structured Outputs for per-page-batch extraction."""
     entity: str
@@ -108,13 +113,22 @@ class ExtractedFact(BaseModel):
     period_end: Optional[str] = None
     as_of_date: Optional[str] = None
     fiscal_year: Optional[str] = None
-    qualifiers: dict[str, Any] = Field(default_factory=dict)
+    qualifiers: list[QualifierItem] = Field(
+        default_factory=list,
+        description="List of key-value qualifier pairs, e.g. [{'key': 'basis', 'value': 'standalone'}]"
+    )
     fact_type: str
     confidence: float = Field(ge=0.0, le=1.0)
     verbatim_quote: str = Field(
         description="Copy the EXACT words from the source text. Do NOT paraphrase. This will be machine-verified."
     )
     page_number: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict with qualifiers formatted as a key-value dictionary."""
+        d = self.model_dump()
+        d["qualifiers"] = {q.key: q.value for q in self.qualifiers}
+        return d
 
 
 class ExtractionResponse(BaseModel):
