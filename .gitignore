@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment / secrets — NEVER COMMIT THESE
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Node (frontend)
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# Uploaded PDFs (large files — stored in R2, not git)
+uploads/
+
+# Alembic compiled migrations (keep source, skip compiled)
+backend/alembic/versions/__pycache__/
