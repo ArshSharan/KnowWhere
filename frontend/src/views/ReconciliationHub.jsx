@@ -1,5 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { GitCompare, CheckCircle2, XCircle, HelpCircle, FileText, Info, RefreshCw, Quote, ArrowRight } from 'lucide-react';
+import {
+  GitCompare, CheckCircle2, XCircle, HelpCircle,
+  FileText, RefreshCw,
+} from 'lucide-react';
+
+function SkeletonRelCard() {
+  return (
+    <div className="skeleton-rel-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="skeleton skeleton-text" style={{ width: 100, height: 22, borderRadius: 9999 }} />
+        <div className="skeleton skeleton-text sm" style={{ width: 80 }} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 16, padding: '12px', background: 'var(--bg-surface)', borderRadius: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="skeleton skeleton-text sm" style={{ width: '60%' }} />
+          <div className="skeleton skeleton-text" style={{ width: '80%' }} />
+          <div className="skeleton skeleton-text lg" style={{ width: '40%' }} />
+        </div>
+        <div className="skeleton" style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="skeleton skeleton-text sm" style={{ width: '60%' }} />
+          <div className="skeleton skeleton-text" style={{ width: '80%' }} />
+          <div className="skeleton skeleton-text lg" style={{ width: '40%' }} />
+        </div>
+      </div>
+      <div style={{ borderLeft: '2px solid var(--border-subtle)', paddingLeft: 12 }}>
+        <div className="skeleton skeleton-text sm" style={{ width: '85%', marginBottom: 6 }} />
+        <div className="skeleton skeleton-text sm" style={{ width: '60%' }} />
+      </div>
+    </div>
+  );
+}
 import { fetchRelationships } from '../api';
 import EvidenceDrawer from '../components/EvidenceDrawer';
 
@@ -21,9 +52,7 @@ export default function ReconciliationHub() {
     }
   };
 
-  useEffect(() => {
-    loadRelationships();
-  }, []);
+  useEffect(() => { loadRelationships(); }, []);
 
   const counts = {
     all: relationships.length,
@@ -32,34 +61,25 @@ export default function ReconciliationHub() {
     reconciled_by_context: relationships.filter((r) => r.relationship === 'reconciled_by_context').length,
   };
 
-  const filtered = relationships.filter((r) => {
-    if (filter === 'all') return true;
-    return r.relationship === filter;
-  });
+  const filtered = relationships.filter((r) =>
+    filter === 'all' ? true : r.relationship === filter
+  );
 
   const getBadgeIcon = (type) => {
     switch (type) {
-      case 'corroborates':
-        return <CheckCircle2 size={16} />;
-      case 'contradicts':
-        return <XCircle size={16} />;
-      case 'reconciled_by_context':
-        return <HelpCircle size={16} />;
-      default:
-        return <Info size={16} />;
+      case 'corroborates':        return <CheckCircle2 size={14} />;
+      case 'contradicts':         return <XCircle size={14} />;
+      case 'reconciled_by_context': return <HelpCircle size={14} />;
+      default:                    return <GitCompare size={14} />;
     }
   };
 
   const getBadgeLabel = (type) => {
     switch (type) {
-      case 'corroborates':
-        return 'Corroborates (Agreement)';
-      case 'contradicts':
-        return 'Contradiction (Conflict)';
-      case 'reconciled_by_context':
-        return 'Reconciled by Context';
-      default:
-        return type;
+      case 'corroborates':          return 'Corroborates';
+      case 'contradicts':           return 'Contradicts';
+      case 'reconciled_by_context': return 'Reconciled by context';
+      default:                      return type;
     }
   };
 
@@ -68,91 +88,91 @@ export default function ReconciliationHub() {
       {/* Header */}
       <div className="section-header">
         <div className="section-title">
-          <h2>Reconciliation Hub — The 4 Demo Cases</h2>
-          <p>
-            Cross-document LLM reconciliation evaluating candidate fact pairs with explainable reasoning traces
-          </p>
+          <h2>Reconciliation hub</h2>
+          <p>Cross-document fact pairs evaluated with explainable reasoning</p>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={loadRelationships} id="btn-refresh-rel">
-          <RefreshCw size={14} /> Refresh
+          <RefreshCw size={13} /> Refresh
         </button>
       </div>
 
-      {/* Filter Tabs & Counts */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginBottom: '1.75rem' }}>
+      {/* Filter pills */}
+      <div className="filter-row">
         <button
-          className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+          className={`filter-pill ${filter === 'all' ? 'active' : ''}`}
           onClick={() => setFilter('all')}
         >
-          All Relationships ({counts.all})
+          All ({counts.all})
         </button>
         <button
-          className={`btn btn-sm ${filter === 'corroborates' ? 'btn-primary' : 'btn-secondary'}`}
+          className={`filter-pill ${filter === 'corroborates' ? 'active' : ''}`}
           onClick={() => setFilter('corroborates')}
-          style={{ borderColor: filter === 'corroborates' ? 'transparent' : 'rgba(16, 185, 129, 0.4)' }}
+          style={filter !== 'corroborates' ? { borderColor: 'rgba(30,142,90,0.3)', color: 'var(--rel-corroborates-fg)' } : {}}
         >
-          <CheckCircle2 size={14} color="#10b981" /> Corroborates ({counts.corroborates})
+          <CheckCircle2 size={13} /> Corroborates ({counts.corroborates})
         </button>
         <button
-          className={`btn btn-sm ${filter === 'contradicts' ? 'btn-primary' : 'btn-secondary'}`}
+          className={`filter-pill ${filter === 'contradicts' ? 'active' : ''}`}
           onClick={() => setFilter('contradicts')}
-          style={{ borderColor: filter === 'contradicts' ? 'transparent' : 'rgba(244, 63, 94, 0.4)' }}
+          style={filter !== 'contradicts' ? { borderColor: 'rgba(217,96,62,0.3)', color: 'var(--rel-contradicts-fg)' } : {}}
         >
-          <XCircle size={14} color="#f43f5e" /> Contradictions ({counts.contradicts})
+          <XCircle size={13} /> Contradicts ({counts.contradicts})
         </button>
         <button
-          className={`btn btn-sm ${filter === 'reconciled_by_context' ? 'btn-primary' : 'btn-secondary'}`}
+          className={`filter-pill ${filter === 'reconciled_by_context' ? 'active' : ''}`}
           onClick={() => setFilter('reconciled_by_context')}
-          style={{ borderColor: filter === 'reconciled_by_context' ? 'transparent' : 'rgba(245, 158, 11, 0.4)' }}
+          style={filter !== 'reconciled_by_context' ? { borderColor: 'rgba(184,132,42,0.3)', color: 'var(--rel-reconciled-fg)' } : {}}
         >
-          <HelpCircle size={14} color="#f59e0b" /> Reconciled by Context ({counts.reconciled_by_context})
+          <HelpCircle size={13} /> Reconciled by context ({counts.reconciled_by_context})
         </button>
       </div>
 
-      {/* Relationships Feed */}
+      {/* Feed */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          Loading cross-document reconciliation edges...
+        <div className="reconciliation-grid">
+          <SkeletonRelCard /><SkeletonRelCard />
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '3.5rem', background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-subtle)' }}>
-          <GitCompare size={40} color="var(--text-muted)" style={{ margin: '0 auto 1rem' }} />
-          <h3>No {filter !== 'all' ? filter.replace(/_/g, ' ') : ''} relationships found yet</h3>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', maxWidth: '500px', margin: '0.5rem auto 0' }}>
-            Reconciliation executes automatically across documents after two or more PDFs are ingested.
-            You can also trigger manual reconciliation on the Documents page.
+        <div className="empty-state">
+          <div className="empty-state-icon"><GitCompare size={22} /></div>
+          <h3>No {filter !== 'all' ? `"${getBadgeLabel(filter)}"` : ''} relationships yet</h3>
+          <p>
+            Reconciliation runs automatically after two or more PDFs are ingested.
+            You can also trigger it manually from the Documents page.
           </p>
         </div>
       ) : (
         <div className="reconciliation-grid">
           {filtered.map((rel) => (
-            <div key={rel.id} className={`rel-card ${rel.relationship}`} id={`rel-card-${rel.id}`}>
-              {/* Header Badge */}
+            <div
+              key={rel.id}
+              className={`rel-card ${rel.relationship}`}
+              id={`rel-card-${rel.id}`}
+            >
+              {/* Header */}
               <div className="rel-header">
                 <span className={`rel-badge ${rel.relationship}`}>
                   {getBadgeIcon(rel.relationship)}
                   {getBadgeLabel(rel.relationship)}
                 </span>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {rel.basis && rel.basis !== 'none' && (
-                    <span className="badge-tag" style={{ color: 'var(--accent-cyan)', borderColor: 'var(--border-accent)' }}>
-                      Basis: {rel.basis.replace(/_/g, ' ')}
-                    </span>
+                    <span className="badge-tag">{rel.basis.replace(/_/g, ' ')}</span>
                   )}
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Confidence: {(rel.confidence * 100).toFixed(0)}%
+                    {(rel.confidence * 100).toFixed(0)}% confidence
                   </span>
                 </div>
               </div>
 
-              {/* Side-by-Side Comparison Box */}
+              {/* Side-by-side facts */}
               <div className="rel-comparison-box">
                 {/* Fact A */}
                 <div className="rel-fact-pane">
                   <div className="rel-fact-doc">
-                    <FileText size={13} />
+                    <FileText size={12} />
                     <span>{rel.fact_a_doc_title || 'Document A'}</span>
-                    <span>• P. {rel.fact_a_page || '?'}</span>
+                    <span>· p.{rel.fact_a_page || '?'}</span>
                   </div>
                   <div className="rel-fact-entity">{rel.fact_a_entity}</div>
                   <div className="rel-fact-attr">{rel.fact_a_attribute}</div>
@@ -161,34 +181,36 @@ export default function ReconciliationHub() {
                   </div>
                   {rel.fact_a_quote && (
                     <div
-                      style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.25rem', cursor: 'pointer', textDecoration: 'underline' }}
-                      onClick={() => setSelectedEvidenceFact({
-                        attribute: rel.fact_a_attribute,
-                        entity: rel.fact_a_entity,
-                        value: rel.fact_a_value,
-                        unit: rel.fact_a_unit,
-                        verbatim_quote: rel.fact_a_quote,
-                        page_number: rel.fact_a_page,
-                        evidence_confidence: 'high',
-                        document_id: rel.fact_a_doc_id,
-                      })}
+                      className="rel-fact-quote"
+                      onClick={() =>
+                        setSelectedEvidenceFact({
+                          attribute: rel.fact_a_attribute,
+                          entity: rel.fact_a_entity,
+                          value: rel.fact_a_value,
+                          unit: rel.fact_a_unit,
+                          verbatim_quote: rel.fact_a_quote,
+                          page_number: rel.fact_a_page,
+                          evidence_confidence: 'high',
+                          document_id: rel.fact_a_doc_id,
+                        })
+                      }
                     >
-                      "{rel.fact_a_quote.slice(0, 75)}..."
+                      "{rel.fact_a_quote.slice(0, 80)}…"
                     </div>
                   )}
                 </div>
 
-                {/* VS Divider */}
+                {/* VS divider */}
                 <div className="rel-divider-icon">
-                  <GitCompare size={18} />
+                  <GitCompare size={15} />
                 </div>
 
                 {/* Fact B */}
                 <div className="rel-fact-pane">
                   <div className="rel-fact-doc">
-                    <FileText size={13} />
+                    <FileText size={12} />
                     <span>{rel.fact_b_doc_title || 'Document B'}</span>
-                    <span>• P. {rel.fact_b_page || '?'}</span>
+                    <span>· p.{rel.fact_b_page || '?'}</span>
                   </div>
                   <div className="rel-fact-entity">{rel.fact_b_entity}</div>
                   <div className="rel-fact-attr">{rel.fact_b_attribute}</div>
@@ -197,27 +219,29 @@ export default function ReconciliationHub() {
                   </div>
                   {rel.fact_b_quote && (
                     <div
-                      style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.25rem', cursor: 'pointer', textDecoration: 'underline' }}
-                      onClick={() => setSelectedEvidenceFact({
-                        attribute: rel.fact_b_attribute,
-                        entity: rel.fact_b_entity,
-                        value: rel.fact_b_value,
-                        unit: rel.fact_b_unit,
-                        verbatim_quote: rel.fact_b_quote,
-                        page_number: rel.fact_b_page,
-                        evidence_confidence: 'high',
-                        document_id: rel.fact_b_doc_id,
-                      })}
+                      className="rel-fact-quote"
+                      onClick={() =>
+                        setSelectedEvidenceFact({
+                          attribute: rel.fact_b_attribute,
+                          entity: rel.fact_b_entity,
+                          value: rel.fact_b_value,
+                          unit: rel.fact_b_unit,
+                          verbatim_quote: rel.fact_b_quote,
+                          page_number: rel.fact_b_page,
+                          evidence_confidence: 'high',
+                          document_id: rel.fact_b_doc_id,
+                        })
+                      }
                     >
-                      "{rel.fact_b_quote.slice(0, 75)}..."
+                      "{rel.fact_b_quote.slice(0, 80)}…"
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Natural Language Explanation Trace */}
+              {/* Reasoning trace */}
               <div className="rel-explanation">
-                <strong>Reconciliation Reasoning: </strong>
+                <strong>Reasoning: </strong>
                 {rel.explanation}
               </div>
             </div>
@@ -225,8 +249,10 @@ export default function ReconciliationHub() {
         </div>
       )}
 
-      {/* Evidence Drawer for quote inspect */}
-      <EvidenceDrawer fact={selectedEvidenceFact} onClose={() => setSelectedEvidenceFact(null)} />
+      <EvidenceDrawer
+        fact={selectedEvidenceFact}
+        onClose={() => setSelectedEvidenceFact(null)}
+      />
     </div>
   );
 }

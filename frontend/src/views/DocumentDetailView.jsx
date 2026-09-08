@@ -1,7 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Search, FileText, Quote, CheckCircle, AlertTriangle, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Search, FileText, CheckCircle, AlertTriangle, ExternalLink, TrendingUp, DollarSign, Users, Building } from 'lucide-react';
 import { fetchDocumentFacts, getDocumentFileUrl } from '../api';
 import EvidenceDrawer from '../components/EvidenceDrawer';
+
+function getTileColor(factType) {
+  if (!factType) return 'sky';
+  const ft = factType.toLowerCase();
+  if (ft.includes('financial') || ft.includes('revenue') || ft.includes('profit')) return 'mint';
+  if (ft.includes('operational') || ft.includes('volume') || ft.includes('shipment')) return 'sky';
+  if (ft.includes('corporate') || ft.includes('governance') || ft.includes('director')) return 'lavender';
+  if (ft.includes('legal') || ft.includes('address') || ft.includes('registration')) return 'peach';
+  return 'amber';
+}
+
+function getTileIcon(factType) {
+  if (!factType) return <FileText size={15} />;
+  const ft = factType.toLowerCase();
+  if (ft.includes('financial') || ft.includes('revenue')) return <DollarSign size={15} />;
+  if (ft.includes('operational') || ft.includes('volume')) return <TrendingUp size={15} />;
+  if (ft.includes('corporate') || ft.includes('governance')) return <Building size={15} />;
+  if (ft.includes('customer') || ft.includes('employee')) return <Users size={15} />;
+  return <FileText size={15} />;
+}
+
+// Skeleton table rows
+function SkeletonRows({ count = 6 }) {
+  return Array.from({ length: count }).map((_, i) => (
+    <tr key={i} className="skeleton-row">
+      <td><div className="skeleton skeleton-tile" /></td>
+      <td><div className="skeleton skeleton-text" style={{ width: '80%' }} /></td>
+      <td><div className="skeleton skeleton-text" style={{ width: '60%' }} /></td>
+      <td><div className="skeleton skeleton-text lg" style={{ width: '50%' }} /></td>
+      <td><div className="skeleton skeleton-text sm" style={{ width: 40, borderRadius: 9999 }} /></td>
+      <td><div className="skeleton skeleton-text sm" style={{ width: 36, borderRadius: 9999 }} /></td>
+      <td><div className="skeleton skeleton-text sm" style={{ width: 60, borderRadius: 9999 }} /></td>
+      <td><div className="skeleton skeleton-text sm" style={{ width: 80, borderRadius: 8 }} /></td>
+    </tr>
+  ));
+}
 
 export default function DocumentDetailView({ docId, onBack }) {
   const [docData, setDocData] = useState(null);
@@ -24,26 +60,19 @@ export default function DocumentDetailView({ docId, onBack }) {
     loadFacts();
   }, [docId]);
 
-  if (loading) {
+  if (!loading && !docData) {
     return (
-      <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>
-        Loading document facts and evidence...
-      </div>
-    );
-  }
-
-  if (!docData) {
-    return (
-      <div style={{ textAlign: 'center', padding: '4rem' }}>
+      <div className="empty-state" style={{ marginTop: 32 }}>
         <h3>Document not found</h3>
-        <button className="btn btn-secondary" onClick={onBack} style={{ marginTop: '1rem' }}>
-          <ArrowLeft size={16} /> Back to Documents
+        <p>This document may have been removed or failed to ingest.</p>
+        <button className="btn btn-secondary" onClick={onBack} style={{ marginTop: 16 }}>
+          <ArrowLeft size={15} /> Back to documents
         </button>
       </div>
     );
   }
 
-  const allFacts = docData.facts || [];
+  const allFacts = docData?.facts || [];
   const factTypes = ['all', ...Array.from(new Set(allFacts.map((f) => f.fact_type).filter(Boolean)))];
 
   const filteredFacts = allFacts.filter((f) => {
@@ -60,142 +89,106 @@ export default function DocumentDetailView({ docId, onBack }) {
 
   return (
     <div>
-      {/* Back button & Document Title */}
-      <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      {/* Back + title */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button className="btn btn-secondary btn-sm" onClick={onBack} id="btn-back-docs">
-            <ArrowLeft size={16} /> Documents
+            <ArrowLeft size={15} /> Documents
           </button>
           <div>
-            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.4rem', fontWeight: 700 }}>
-              {docData.title || 'Document Facts'}
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
+              {loading ? <div className="skeleton skeleton-text xl" style={{ width: 240 }} /> : (docData?.title || 'Document facts')}
             </h2>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
-              <span>{docData.page_count || '?'} Pages</span>
-              <span>•</span>
-              <span><strong>{allFacts.length}</strong> Facts Extracted</span>
-            </div>
+            {!loading && (
+              <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'flex', gap: 12, marginTop: 2 }}>
+                <span>{docData?.page_count || '?'} pages</span>
+                <span>•</span>
+                <span><strong style={{ color: 'var(--text-primary)' }}>{allFacts.length}</strong> facts extracted</span>
+              </div>
+            )}
           </div>
         </div>
 
-        <a
-          href={getDocumentFileUrl(docId)}
-          target="_blank"
-          rel="noreferrer"
-          className="btn btn-secondary btn-sm"
-          id="btn-view-pdf"
-        >
-          <ExternalLink size={14} /> Open Source PDF
-        </a>
+        {!loading && (
+          <a href={getDocumentFileUrl(docId)} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" id="btn-view-pdf">
+            <ExternalLink size={13} /> Open source PDF
+          </a>
+        )}
       </div>
 
-      {/* Filter & Search Bar */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: '240px', maxWidth: '420px' }}>
-          <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
-            type="text"
-            placeholder="Search attributes, values, or quotes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              background: 'var(--bg-glass-input)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '10px',
-              padding: '0.55rem 1rem 0.55rem 2.25rem',
-              color: 'var(--text-primary)',
-              fontSize: '0.875rem',
-              outline: 'none',
-            }}
-          />
+      {/* Filter & search */}
+      {!loading && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: 220, maxWidth: 400 }}>
+            <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+            <input
+              type="text" className="input-field" placeholder="Search facts…"
+              value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ paddingLeft: '2.25rem' }}
+            />
+          </div>
+          <div className="filter-row" style={{ marginBottom: 0 }}>
+            {factTypes.map((ft) => (
+              <button key={ft} className={`filter-pill ${typeFilter === ft ? 'active' : ''}`} onClick={() => setTypeFilter(ft)}>
+                {ft === 'all' ? 'All types' : ft}
+              </button>
+            ))}
+          </div>
         </div>
+      )}
 
-        {/* Fact Type Pills */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-          {factTypes.map((ft) => (
-            <button
-              key={ft}
-              className={`badge-tag ${typeFilter === ft ? 'active' : ''}`}
-              onClick={() => setTypeFilter(ft)}
-              style={{
-                cursor: 'pointer',
-                background: typeFilter === ft ? 'rgba(6, 182, 212, 0.2)' : 'rgba(255,255,255,0.04)',
-                color: typeFilter === ft ? '#fff' : 'var(--text-secondary)',
-                borderColor: typeFilter === ft ? 'var(--accent-cyan)' : 'var(--border-subtle)',
-              }}
-            >
-              {ft}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Facts Table */}
+      {/* Table */}
       <div className="facts-table-wrap">
         <table className="facts-table">
           <thead>
             <tr>
+              <th style={{ width: 40 }}></th>
               <th>Entity</th>
               <th>Attribute</th>
               <th>Value</th>
-              <th>Time / FY</th>
+              <th>Period</th>
               <th>Page</th>
-              <th>Evidence Grounding</th>
-              <th>Action</th>
+              <th>Grounding</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {filteredFacts.length === 0 ? (
+            {loading ? (
+              <SkeletonRows count={6} />
+            ) : filteredFacts.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
                   No facts match the selected filters.
                 </td>
               </tr>
             ) : (
               filteredFacts.map((fact) => {
                 const isHighConf = fact.evidence?.evidence_confidence === 'high';
+                const tileColor = getTileColor(fact.fact_type);
                 return (
-                  <tr
-                    key={fact.id}
-                    onClick={() => setSelectedFact({ ...fact, document_id: docId })}
-                    title="Click to view verbatim evidence quote"
-                  >
-                    <td style={{ fontWeight: 600, color: 'var(--accent-cyan)' }}>{fact.entity}</td>
-                    <td style={{ color: 'var(--text-primary)' }}>{fact.attribute}</td>
-                    <td style={{ fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
-                      {fact.value} {fact.unit && <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{fact.unit}</span>}
+                  <tr key={fact.id} onClick={() => setSelectedFact({ ...fact, document_id: docId })} title="Click to view evidence">
+                    <td>
+                      <div className={`fact-type-tile ${tileColor}`}>{getTileIcon(fact.fact_type)}</div>
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{fact.entity}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{fact.attribute}</td>
+                    <td style={{ fontWeight: 700 }}>
+                      {fact.value}
+                      {fact.unit && <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>{fact.unit}</span>}
                     </td>
                     <td>
-                      {fact.fiscal_year ? (
-                        <span className="badge-tag">{fact.fiscal_year}</span>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>—</span>
-                      )}
+                      {fact.fiscal_year ? <span className="badge-tag">{fact.fiscal_year}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    </td>
+                    <td><span className="badge-tag">p.{fact.evidence?.page_number || '—'}</span></td>
+                    <td>
+                      <span className={`confidence-chip ${isHighConf ? 'high' : 'low'}`}>
+                        {isHighConf ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+                        {isHighConf ? 'Verified' : 'Fuzzy'}
+                      </span>
                     </td>
                     <td>
-                      <span className="badge-tag">P. {fact.evidence?.page_number || '—'}</span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span className={`confidence-chip ${isHighConf ? 'high' : 'low'}`}>
-                          {isHighConf ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
-                          {isHighConf ? 'High' : 'Low'}
-                        </span>
-                        <span style={{ fontSize: '0.785rem', color: 'var(--text-muted)', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          "{fact.evidence?.verbatim_quote}"
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedFact({ ...fact, document_id: docId });
-                        }}
-                      >
-                        <Quote size={13} /> Evidence
+                      <button className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); setSelectedFact({ ...fact, document_id: docId }); }}>
+                        Evidence
                       </button>
                     </td>
                   </tr>
@@ -206,7 +199,6 @@ export default function DocumentDetailView({ docId, onBack }) {
         </table>
       </div>
 
-      {/* Selected Fact Evidence Drawer */}
       <EvidenceDrawer fact={selectedFact} onClose={() => setSelectedFact(null)} />
     </div>
   );

@@ -68,8 +68,12 @@ export async function fetchEntity(entityId) {
   return fetch(`${API_BASE}/entities/${entityId}`).then(handleResponse);
 }
 
-export async function searchFacts(query) {
-  return fetch(`${API_BASE}/facts/search?q=${encodeURIComponent(query)}`).then(handleResponse);
+export async function searchFacts(query, limit = 30) {
+  return fetch(`${API_BASE}/facts/search?q=${encodeURIComponent(query)}&limit=${limit}`).then(handleResponse);
+}
+
+export async function synthesizeAnswer(query) {
+  return fetch(`${API_BASE}/facts/synthesize?q=${encodeURIComponent(query)}`).then(handleResponse);
 }
 
 export function getDocumentFileUrl(docId) {

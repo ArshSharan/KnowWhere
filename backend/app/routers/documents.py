@@ -7,6 +7,7 @@ GET  /documents/{id}     — document status + metadata
 GET  /documents/{id}/facts — all extracted facts with evidence
 GET  /facts/{id}         — one fact in full
 GET  /facts/{id}/relationships — relationship edges for one fact
+GET  /facts/search       — semantic search + optional AI synthesis
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from typing import Any, Optional
 import asyncpg
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Query, Response
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from app.config import get_settings
 from app.db.connection import get_pool
@@ -34,6 +36,12 @@ from app.models.api import (
 from app.services.embedder import embed_texts
 from app.services.ingestion_worker import compute_content_hash, ingest_document
 from app.services import r2_client
+
+
+class SynthesisResponse(BaseModel):
+    answer: str
+    model_used: str
+    facts_used: int
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -228,6 +236,108 @@ async def search_facts_endpoint(
             )
         )
     return results
+
+
+SYNTHESIS_SYSTEM_PROMPT = """\
+You are a precise financial-document analyst. You are given a user's question and a set of \
+grounded facts extracted from real documents (each with a verbatim quote as evidence). \
+Your job: answer the question in 2-4 clear, well-structured sentences using ONLY the provided facts. \
+- State specific numbers, time periods and entity names exactly as given in the facts.
+- If multiple facts cover the same metric for different periods, mention the trend.
+- If the facts are insufficient to fully answer the question, say so briefly.
+- Do NOT add information not present in the provided facts.
+- Write in plain, professional English — no bullet points, no markdown.
+"""
+
+@router.get("/facts/synthesize", response_model=SynthesisResponse, tags=["Facts"])
+async def synthesize_answer(
+    q: str = Query(..., min_length=1, description="Question to answer from the knowledge base"),
+    limit: int = Query(12, ge=1, le=30, description="Number of top facts to use as context"),
+    pool: asyncpg.Pool = Depends(get_pool),
+):
+    """
+    RAG-style synthesis: retrieve the top-K relevant facts for the query,
+    then ask Luna (gpt-5.6-luna) to produce a grounded natural-language answer.
+    If Luna returns something too short (<40 chars), escalates to Sol automatically.
+    """
+    settings = get_settings()
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+    # Retrieve top facts via semantic search
+    query_embedding = None
+    try:
+        embeddings = await embed_texts([q], client)
+        if embeddings and embeddings[0]:
+            query_embedding = embeddings[0]
+    except Exception as e:
+        logger.warning(f"Embedding failed for synthesis query '{q}': {e}")
+
+    rows = await crud.search_facts(pool, query_embedding=query_embedding, query_text=q, limit=limit)
+    if not rows:
+        return SynthesisResponse(
+            answer="No relevant facts were found in the knowledge base for this query. "
+                   "Try uploading more documents or rephrasing your question.",
+            model_used="none",
+            facts_used=0,
+        )
+
+    # Build context block
+    context_lines = []
+    for i, r in enumerate(rows, 1):
+        entity = r.get("entity_name") or r.get("entity", "")
+        attr   = r.get("attribute", "")
+        value  = r.get("value", "")
+        unit   = r.get("unit") or ""
+        fy     = r.get("fiscal_year") or ""
+        quote  = r.get("verbatim_quote") or ""
+        doc    = r.get("document_title") or "unknown document"
+        page   = r.get("page_number") or ""
+        context_lines.append(
+            f"[Fact {i}] {entity} — {attr}: {value} {unit} {('(' + fy + ')') if fy else ''}\n"
+            f"  Evidence: \"{quote}\" (p.{page}, {doc})"
+        )
+
+    context = "\n\n".join(context_lines)
+    user_message = f"Question: {q}\n\nGrounded facts from the knowledge base:\n\n{context}"
+
+    # Try Luna first (cheaper, faster)
+    primary_model = settings.extraction_model
+    fallback_model = settings.reconciliation_model
+    model_used = primary_model
+
+    try:
+        resp = await client.chat.completions.create(
+            model=primary_model,
+            messages=[
+                {"role": "system", "content": SYNTHESIS_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.2,
+            max_tokens=400,
+        )
+        answer = resp.choices[0].message.content.strip()
+
+        # Escalate if answer is suspiciously short or evasive
+        if len(answer) < 40 and primary_model != fallback_model:
+            logger.info(f"Luna answer too short ({len(answer)} chars) — escalating to {fallback_model}.")
+            resp2 = await client.chat.completions.create(
+                model=fallback_model,
+                messages=[
+                    {"role": "system", "content": SYNTHESIS_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=0.2,
+                max_tokens=400,
+            )
+            answer = resp2.choices[0].message.content.strip()
+            model_used = fallback_model
+
+    except Exception as e:
+        logger.error(f"Synthesis LLM call failed: {e}")
+        answer = "Could not generate a synthesized answer at this time. The raw facts are shown below."
+        model_used = "error"
+
+    return SynthesisResponse(answer=answer, model_used=model_used, facts_used=len(rows))
 
 
 @router.get("/relationships", response_model=list[GlobalRelationshipOut], tags=["Facts"])
