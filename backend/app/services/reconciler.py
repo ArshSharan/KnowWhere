@@ -146,6 +146,7 @@ async def generate_candidates(
             WHERE f.entity_id = $2
               AND f.id        != $3
               AND f.embedding IS NOT NULL
+              AND (1 - (f.embedding <=> $1::vector)) >= 0.70
             ORDER BY f.embedding <=> $1::vector
             LIMIT $4
             """,

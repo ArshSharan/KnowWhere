@@ -29,9 +29,8 @@ from app.services.embedder import embed_one
 
 logger = logging.getLogger(__name__)
 
-# Cosine similarity threshold for entity merging (0.92 is deliberately tight —
-# we'd rather create a duplicate entity than silently merge unrelated ones).
-ENTITY_MERGE_THRESHOLD = 0.92
+# Cosine similarity threshold for entity merging (0.85 allows synonymous corporate forms like Delhivery vs Delhivery Limited)
+ENTITY_MERGE_THRESHOLD = 0.85
 
 # Legal suffixes to strip for normalization
 _LEGAL_SUFFIXES = re.compile(
@@ -42,6 +41,8 @@ _LEGAL_SUFFIXES = re.compile(
 
 _WHITESPACE = re.compile(r"\s+")
 _TRAILING_PUNCT = re.compile(r"[\s.\-,]+$")
+
+_GENERIC_COMPANY_TERMS = {"company", "the company", "our company", "this company", "the group"}
 
 
 def normalize_entity_name(name: str) -> str:
@@ -76,20 +77,38 @@ async def resolve_entity(
     raw_name = raw_name.strip()
     normalized = normalize_entity_name(raw_name)
 
-    # ── Step 1: Exact match (canonical_name, case-insensitive) ────────────
+    # If it's a generic corporate anaphor ("the Company", "Our Company"), check for existing primary company entity
     async with pool.acquire() as conn:
+        if normalized in _GENERIC_COMPANY_TERMS:
+            # Resolve generic corporate anaphors to the primary named entity in the knowledge layer
+            row = await conn.fetchrow(
+                """
+                SELECT id, canonical_name FROM entities
+                WHERE LOWER(canonical_name) NOT IN ('company', 'the company', 'our company', 'this company', 'the group')
+                ORDER BY array_length(aliases, 1) DESC NULLS LAST, created_at ASC
+                LIMIT 1
+                """
+            )
+            if row:
+                entity_id = str(row["id"])
+                await crud.add_entity_alias(pool, entity_id, raw_name)
+                return entity_id
+
+        # ── Step 1: Exact match (canonical_name or aliases or normalized suffix match) ───
         row = await conn.fetchrow(
             """
             SELECT id, canonical_name FROM entities
-            WHERE LOWER(canonical_name) = $1
+            WHERE LOWER(canonical_name) = LOWER($2)
+               OR LOWER(canonical_name) = $1
+               OR LOWER(REGEXP_REPLACE(canonical_name, '\\s+(limited|ltd\\.?|private|pvt\\.?|inc\\.?|llc|llp)\\b', '', 'gi')) = $1
                OR $2 = ANY(aliases)
+               OR $1 = ANY(aliases)
             LIMIT 1
             """,
             normalized,
-            raw_name,  # also check against stored alias surface forms
+            raw_name,
         )
         if row:
-            # Store the surface form as an alias if it's new
             entity_id = str(row["id"])
             if raw_name.lower() != row["canonical_name"].lower():
                 await crud.add_entity_alias(pool, entity_id, raw_name)
