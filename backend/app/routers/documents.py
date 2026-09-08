@@ -312,8 +312,7 @@ async def synthesize_answer(
                 {"role": "system", "content": SYNTHESIS_SYSTEM_PROMPT},
                 {"role": "user", "content": user_message},
             ],
-            temperature=0.2,
-            max_tokens=400,
+            max_completion_tokens=400,
         )
         answer = resp.choices[0].message.content.strip()
 
@@ -326,8 +325,7 @@ async def synthesize_answer(
                     {"role": "system", "content": SYNTHESIS_SYSTEM_PROMPT},
                     {"role": "user", "content": user_message},
                 ],
-                temperature=0.2,
-                max_tokens=400,
+                max_completion_tokens=400,
             )
             answer = resp2.choices[0].message.content.strip()
             model_used = fallback_model
