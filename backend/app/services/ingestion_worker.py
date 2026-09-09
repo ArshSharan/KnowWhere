@@ -245,7 +245,7 @@ async def _resolve_entity_with_embedding(
     if pre_embedding is None:
         return await resolve_entity(pool, client, raw_name)
 
-    from app.services.entity_canonicalizer import normalize_entity_name, ENTITY_MERGE_THRESHOLD, _GENERIC_COMPANY_TERMS
+    from app.services.entity_canonicalizer import normalize_entity_name, ENTITY_MERGE_THRESHOLD, _CORPORATE_ANAPHORS
     from app.db.crud import add_entity_alias, get_or_create_entity
     from uuid import UUID
 
@@ -253,11 +253,15 @@ async def _resolve_entity_with_embedding(
 
     # Step 1: exact string match
     async with pool.acquire() as conn:
-        if normalized in _GENERIC_COMPANY_TERMS:
+        if normalized in _CORPORATE_ANAPHORS:
             row = await conn.fetchrow(
                 """
                 SELECT id, canonical_name FROM entities
-                WHERE LOWER(canonical_name) NOT IN ('company', 'the company', 'our company', 'this company', 'the group')
+                WHERE LOWER(canonical_name) NOT IN (
+                    'company', 'the company', 'our company', 'this company',
+                    'the group', 'our group', 'the issuer', 'the registrant',
+                    'the corporation', 'the entity'
+                )
                 ORDER BY array_length(aliases, 1) DESC NULLS LAST, created_at ASC
                 LIMIT 1
                 """
@@ -266,6 +270,7 @@ async def _resolve_entity_with_embedding(
                 entity_id = str(row["id"])
                 await add_entity_alias(pool, entity_id, raw_name)
                 return entity_id
+
 
         row = await conn.fetchrow(
             """

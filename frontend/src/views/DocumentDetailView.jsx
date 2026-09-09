@@ -166,24 +166,30 @@ export default function DocumentDetailView({ docId, onBack }) {
                 const isHighConf = fact.evidence?.evidence_confidence === 'high';
                 const tileColor = getTileColor(fact.fact_type);
                 return (
-                  <tr key={fact.id} onClick={() => setSelectedFact({ ...fact, document_id: docId })} title="Click to view evidence">
+                  <tr key={fact.id} onClick={() => setSelectedFact({ ...fact, document_id: docId })} title="Click to view evidence" className="fact-row-clickable">
                     <td>
                       <div className={`fact-type-tile ${tileColor}`}>{getTileIcon(fact.fact_type)}</div>
                     </td>
-                    <td style={{ fontWeight: 600 }}>{fact.entity}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{fact.attribute}</td>
-                    <td style={{ fontWeight: 700 }}>
-                      {fact.value}
-                      {fact.unit && <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>{fact.unit}</span>}
+                    <td style={{ fontWeight: 600 }}>
+                      <div className="cell-clamp-1">{fact.entity}</div>
+                    </td>
+                    <td style={{ color: 'var(--text-secondary)' }}>
+                      <div className="cell-clamp-1">{fact.attribute}</div>
+                    </td>
+                    <td>
+                      <div className="cell-clamp-2" style={{ fontWeight: 700 }}>
+                        {fact.value}
+                        {fact.unit && <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>{fact.unit}</span>}
+                      </div>
                     </td>
                     <td>
                       {fact.fiscal_year ? <span className="badge-tag">{fact.fiscal_year}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                     </td>
                     <td><span className="badge-tag">p.{fact.evidence?.page_number || '—'}</span></td>
                     <td>
-                      <span className={`confidence-chip ${isHighConf ? 'high' : 'low'}`}>
-                        {isHighConf ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
-                        {isHighConf ? 'Verified' : 'Fuzzy'}
+                      <span className={`confidence-chip ${fact.evidence?.evidence_confidence === 'high' ? 'high' : 'low'}`}>
+                        {fact.evidence?.evidence_confidence === 'high' ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+                        {fact.evidence?.evidence_confidence === 'high' ? 'Verified' : 'Fuzzy'}
                       </span>
                     </td>
                     <td>
@@ -192,6 +198,7 @@ export default function DocumentDetailView({ docId, onBack }) {
                       </button>
                     </td>
                   </tr>
+
                 );
               })
             )}

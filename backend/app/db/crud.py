@@ -332,12 +332,17 @@ async def upsert_fact_relationship(
 async def list_all_relationships(
     pool: asyncpg.Pool,
     relationship: Optional[str] = None,
-    limit: int = 100,
+    limit: int = 200,
     offset: int = 0,
+    include_unrelated: bool = False,
 ) -> list[dict]:
     """
-    Return all relationship edges across all documents, joined with full metadata
+    Return meaningful relationship edges across all documents, joined with full metadata
     for both Fact A and Fact B, plus source documents.
+
+    By default, excludes 'unrelated' pairs — they are a reconciliation detail
+    (necessary to cache negative results) but are not useful in the UI feed.
+    Pass include_unrelated=True or relationship='unrelated' to include them.
     """
     query = """
         SELECT 
@@ -369,14 +374,20 @@ async def list_all_relationships(
         JOIN documents db ON db.id = fb.document_id
     """
     args: list[Any] = []
+    where_clauses = []
+
     if relationship:
-        query += " WHERE fr.relationship = $1"
+        where_clauses.append(f"fr.relationship = ${len(args)+1}")
         args.append(relationship)
-        query += f" ORDER BY fr.confidence DESC, fr.created_at DESC LIMIT ${len(args)+1} OFFSET ${len(args)+2}"
-        args.extend([limit, offset])
-    else:
-        query += " ORDER BY fr.confidence DESC, fr.created_at DESC LIMIT $1 OFFSET $2"
-        args.extend([limit, offset])
+    elif not include_unrelated:
+        # Default: hide unrelated pairs — they are accurate but not useful in the feed
+        where_clauses.append("fr.relationship != 'unrelated'")
+
+    if where_clauses:
+        query += " WHERE " + " AND ".join(where_clauses)
+
+    query += f" ORDER BY fr.confidence DESC, fr.created_at DESC LIMIT ${len(args)+1} OFFSET ${len(args)+2}"
+    args.extend([limit, offset])
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(query, *args)

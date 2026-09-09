@@ -70,6 +70,31 @@ async def lifespan(app: FastAPI):
                 statement_cache_size=0, # Required for PgBouncer / Supabase Pooler compatibility
             )
             logger.info("Database pool created successfully.")
+
+            # ── Startup recovery: fix documents stuck in transient states ──────
+            # If the server crashed mid-ingestion or mid-reconciliation, documents
+            # can be permanently stuck in 'processing', 'extracting', 'reconciling', etc.
+            # Reset them to 'failed' so the user can re-upload or re-reconcile.
+            try:
+                async with app.state.pool.acquire() as conn:
+                    stuck = await conn.fetch(
+                        """
+                        UPDATE documents
+                        SET status = 'failed',
+                            error_message = 'Server restarted mid-operation — please re-upload or re-reconcile.',
+                            updated_at = NOW()
+                        WHERE status NOT IN ('done', 'failed', 'pending')
+                        RETURNING id, title, status
+                        """
+                    )
+                    if stuck:
+                        logger.warning(
+                            f"Startup recovery: reset {len(stuck)} stuck document(s) to 'failed': "
+                            + ", ".join(f"{r['title']} ({r['id']})" for r in stuck)
+                        )
+            except Exception as e:
+                logger.warning(f"Startup recovery check failed (non-fatal): {e}")
+
         except Exception as e:
             logger.error(f"Failed to create database pool: {e}")
             app.state.pool = None

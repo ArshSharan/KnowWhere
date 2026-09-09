@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Building2, Tag, RefreshCw, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Building2, Tag, RefreshCw, ChevronRight, X, ExternalLink, FileText } from 'lucide-react';
 import { fetchEntities, fetchEntity } from '../api';
 import EvidenceDrawer from '../components/EvidenceDrawer';
 
@@ -33,13 +33,101 @@ function SkeletonEntityPanel() {
   );
 }
 
+/** Inline cell-expand modal for a fact row */
+function FactDetailModal({ fact, onClose }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [onClose]);
+
+  if (!fact) return null;
+
+  return (
+    <div className="fact-detail-overlay">
+      <div className="fact-detail-modal" ref={ref}>
+        <div className="fact-detail-header">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', fontWeight: 600 }}>Fact detail</span>
+            <h4 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{fact.attribute}</h4>
+          </div>
+          <button className="fact-detail-close" onClick={onClose}><X size={15} /></button>
+        </div>
+
+        <div className="fact-detail-body">
+          {/* Value */}
+          <div className="fact-detail-row">
+            <span className="fact-detail-label">Value</span>
+            <span className="fact-detail-value-text">
+              {fact.value}
+              {fact.unit && <span className="fact-detail-unit"> {fact.unit}</span>}
+            </span>
+          </div>
+
+          {/* Period */}
+          {(fact.fiscal_year || fact.period_start || fact.period_end) && (
+            <div className="fact-detail-row">
+              <span className="fact-detail-label">Period</span>
+              <span className="fact-detail-value-text">
+                {fact.fiscal_year || `${fact.period_start || ''} – ${fact.period_end || ''}`}
+              </span>
+            </div>
+          )}
+
+          {/* Confidence */}
+          <div className="fact-detail-row">
+            <span className="fact-detail-label">Confidence</span>
+            <span className="fact-detail-value-text">{((fact.confidence || 1) * 100).toFixed(0)}%</span>
+          </div>
+
+          {/* Evidence quote */}
+          {fact.evidence?.verbatim_quote && (
+            <div className="fact-detail-evidence-box">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                <FileText size={11} /> Source quote · p.{fact.evidence?.page_number}
+              </div>
+              <blockquote className="fact-detail-quote">
+                "{fact.evidence.verbatim_quote}"
+              </blockquote>
+            </div>
+          )}
+
+          {/* Qualifiers */}
+          {fact.qualifiers && Object.keys(fact.qualifiers).length > 0 && (
+            <div className="fact-detail-row" style={{ flexDirection: 'column', gap: 6 }}>
+              <span className="fact-detail-label">Qualifiers</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                {Object.entries(fact.qualifiers).map(([k, v]) => (
+                  <span key={k} className="badge-tag" style={{ fontFamily: 'var(--font-mono)' }}>
+                    {k}: {v}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EntitiesView() {
   const [entities, setEntities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedEntityId, setSelectedEntityId] = useState(null);
   const [entityDetails, setEntityDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  const [selectedFact, setSelectedFact] = useState(null);
+  const [expandedFact, setExpandedFact] = useState(null);
 
   const loadEntities = async () => {
     setLoading(true);
@@ -59,6 +147,7 @@ export default function EntitiesView() {
   const handleSelectEntity = async (entityId) => {
     setSelectedEntityId(entityId);
     setLoadingDetails(true);
+    setExpandedFact(null);
     try {
       const data = await fetchEntity(entityId);
       setEntityDetails(data);
@@ -123,7 +212,7 @@ export default function EntitiesView() {
           {/* Right pane — entity details */}
           <div className="entity-detail-panel">
             {loadingDetails ? (
-              <div className="loading-state">Loading entity details…</div>
+              <SkeletonEntityPanel />
             ) : !entityDetails ? (
               <div className="loading-state">Select an entity to view cross-document knowledge.</div>
             ) : (
@@ -138,12 +227,18 @@ export default function EntitiesView() {
                   </h3>
 
                   {entityDetails.aliases && entityDetails.aliases.length > 0 && (
-                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Tag size={11} /> Merged aliases:
+                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 6 }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, flexShrink: 0 }}>
+                        <Tag size={11} /> Aliases:
                       </span>
                       {entityDetails.aliases.map((alias) => (
-                        <span key={alias} className="badge-tag">{alias}</span>
+                        <span
+                          key={alias}
+                          className="badge-tag entity-alias-pill"
+                          title={alias}
+                        >
+                          {alias.length > 40 ? alias.slice(0, 38) + '…' : alias}
+                        </span>
                       ))}
                     </div>
                   )}
@@ -153,43 +248,63 @@ export default function EntitiesView() {
                 <h4 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>
                   Cross-document facts ({entityDetails.facts?.length || 0})
                 </h4>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 14, marginTop: -8 }}>
+                  Click any row to inspect the full value and evidence quote.
+                </p>
 
                 <div className="facts-table-wrap">
                   <table className="facts-table">
                     <thead>
                       <tr>
-                        <th>Attribute</th>
-                        <th>Value</th>
-                        <th>Period</th>
-                        <th>Page</th>
-                        <th>Quote</th>
+                        <th style={{ width: '28%' }}>Attribute</th>
+                        <th style={{ width: '30%' }}>Value</th>
+                        <th style={{ width: '14%' }}>Period</th>
+                        <th style={{ width: '8%' }}>Page</th>
+                        <th style={{ width: '20%' }}>Quote preview</th>
                       </tr>
                     </thead>
                     <tbody>
                       {entityDetails.facts?.map((fact) => (
                         <tr
                           key={fact.id}
-                          onClick={() => setSelectedFact(fact)}
+                          onClick={() => setExpandedFact(fact)}
                           style={{ cursor: 'pointer' }}
-                          title="Click to inspect evidence"
+                          className="fact-row-clickable"
+                          title="Click to inspect full detail"
                         >
-                          <td style={{ fontWeight: 600 }}>{fact.attribute}</td>
-                          <td style={{ fontWeight: 700 }}>
-                            {fact.value}
+                          {/* Attribute — truncated */}
+                          <td style={{ fontWeight: 600 }}>
+                            <div className="cell-clamp-1">{fact.attribute}</div>
+                          </td>
+
+                          {/* Value — truncated with unit */}
+                          <td>
+                            <div className="cell-clamp-2" style={{ fontWeight: 700 }}>
+                              {fact.value}
+                            </div>
                             {fact.unit && (
-                              <span style={{ fontWeight: 400, fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: 4 }}>
+                              <span style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                 {fact.unit}
                               </span>
                             )}
                           </td>
+
+                          {/* Period */}
                           <td>
-                            {fact.fiscal_year ? <span className="badge-tag">{fact.fiscal_year}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                            {fact.fiscal_year
+                              ? <span className="badge-tag" style={{ whiteSpace: 'nowrap' }}>{fact.fiscal_year}</span>
+                              : <span style={{ color: 'var(--text-muted)' }}>—</span>
+                            }
                           </td>
+
+                          {/* Page */}
                           <td>
                             <span className="badge-tag">p.{fact.evidence?.page_number || '—'}</span>
                           </td>
-                          <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>
-                            "{fact.evidence?.verbatim_quote}"
+
+                          {/* Quote preview — single truncated line */}
+                          <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                            <div className="cell-clamp-1">"{fact.evidence?.verbatim_quote}"</div>
                           </td>
                         </tr>
                       ))}
@@ -202,7 +317,10 @@ export default function EntitiesView() {
         </div>
       )}
 
-      <EvidenceDrawer fact={selectedFact} onClose={() => setSelectedFact(null)} />
+      {/* Fact detail modal (click-to-expand) */}
+      {expandedFact && (
+        <FactDetailModal fact={expandedFact} onClose={() => setExpandedFact(null)} />
+      )}
     </div>
   );
 }

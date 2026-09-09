@@ -42,7 +42,16 @@ _LEGAL_SUFFIXES = re.compile(
 _WHITESPACE = re.compile(r"\s+")
 _TRAILING_PUNCT = re.compile(r"[\s.\-,]+$")
 
-_GENERIC_COMPANY_TERMS = {"company", "the company", "our company", "this company", "the group"}
+# Generic corporate anaphors that should resolve to the primary reporting entity of the document.
+# These are document-scoped pronouns, not distinct entities.
+_CORPORATE_ANAPHORS = {
+    "company", "the company", "our company", "this company",
+    "the group", "our group", "the issuer", "the registrant",
+    "the corporation", "the entity",
+}
+
+# If this set name is referenced elsewhere, keep backward compatibility
+_GENERIC_COMPANY_TERMS = _CORPORATE_ANAPHORS
 
 
 def normalize_entity_name(name: str) -> str:
@@ -77,14 +86,21 @@ async def resolve_entity(
     raw_name = raw_name.strip()
     normalized = normalize_entity_name(raw_name)
 
-    # If it's a generic corporate anaphor ("the Company", "Our Company"), check for existing primary company entity
+    # ── Coreference: generic corporate anaphors resolve to the primary named entity ──
+    # Strategy: find the entity with the most aliases that has a real name (not itself
+    # a generic anaphor). This is the most-mentioned entity across the knowledge layer,
+    # which in a focused document corpus is the reporting company.
+    # This is fully generic — no corpus-specific names or heuristics.
     async with pool.acquire() as conn:
-        if normalized in _GENERIC_COMPANY_TERMS:
-            # Resolve generic corporate anaphors to the primary named entity in the knowledge layer
+        if normalized in _CORPORATE_ANAPHORS:
             row = await conn.fetchrow(
                 """
                 SELECT id, canonical_name FROM entities
-                WHERE LOWER(canonical_name) NOT IN ('company', 'the company', 'our company', 'this company', 'the group')
+                WHERE LOWER(canonical_name) NOT IN (
+                    'company', 'the company', 'our company', 'this company',
+                    'the group', 'our group', 'the issuer', 'the registrant',
+                    'the corporation', 'the entity'
+                )
                 ORDER BY array_length(aliases, 1) DESC NULLS LAST, created_at ASC
                 LIMIT 1
                 """
@@ -92,6 +108,7 @@ async def resolve_entity(
             if row:
                 entity_id = str(row["id"])
                 await crud.add_entity_alias(pool, entity_id, raw_name)
+                logger.info(f"Coreference: '{raw_name}' → '{row['canonical_name']}'")
                 return entity_id
 
         # ── Step 1: Exact match (canonical_name or aliases or normalized suffix match) ───
