@@ -53,11 +53,11 @@ export async function triggerReconcile(docId) {
   return handleResponse(res);
 }
 
-export async function fetchRelationships(relationshipType = null) {
-  const url = relationshipType
-    ? `${API_BASE}/relationships?relationship=${encodeURIComponent(relationshipType)}`
-    : `${API_BASE}/relationships`;
-  return fetch(url).then(handleResponse);
+export async function fetchRelationships(relationshipType = null, limit = 200) {
+  const params = new URLSearchParams();
+  if (relationshipType) params.set('relationship', relationshipType);
+  params.set('limit', String(limit));
+  return fetch(`${API_BASE}/relationships?${params.toString()}`).then(handleResponse);
 }
 
 export async function fetchEntities() {

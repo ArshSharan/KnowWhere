@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, GitCompare, Building2, Search, Map } from 'lucide-react';
+import { FileText, GitCompare, Building2, Search, Map, RefreshCw } from 'lucide-react';
 import { fetchHealth, fetchDocuments, fetchEntities, fetchRelationships } from './api';
 import DocumentsView from './views/DocumentsView';
 import DocumentDetailView from './views/DocumentDetailView';
@@ -34,6 +34,7 @@ export default function App() {
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [backendHealth, setBackendHealth] = useState(null);
   const [stats, setStats] = useState({ documents: 0, facts: 0, entities: 0, relationships: 0 });
+  const [activeIngestionDoc, setActiveIngestionDoc] = useState(null);
   const metricsRef = useRef(null);
 
   useScrollReveal(metricsRef);
@@ -50,10 +51,19 @@ export default function App() {
       const [docs, ents, rels] = await Promise.all([
         fetchDocuments().catch(() => []),
         fetchEntities().catch(() => []),
-        fetchRelationships().catch(() => []),
+        fetchRelationships(null, 200).catch(() => []),
       ]);
-      const totalFacts = docs.reduce((acc, d) => acc + (d.facts_count || 0), 0);
-      setStats({ documents: docs.length, facts: totalFacts, entities: ents.length, relationships: rels.length });
+      const totalFacts = (docs || []).reduce((acc, d) => acc + (d.facts_count || 0), 0);
+      setStats({
+        documents: (docs || []).length,
+        facts: totalFacts,
+        entities: (ents || []).length,
+        relationships: (rels || []).length,
+      });
+
+      // Find if any document is currently in active ingestion / reconciliation
+      const processing = (docs || []).find((d) => d.status !== 'done' && d.status !== 'failed');
+      setActiveIngestionDoc(processing || null);
     } catch (e) {
       console.error('Stats loading error:', e);
     }
@@ -61,7 +71,7 @@ export default function App() {
 
   useEffect(() => {
     loadHealthAndStats();
-    const interval = setInterval(loadHealthAndStats, 8000);
+    const interval = setInterval(loadHealthAndStats, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -137,6 +147,38 @@ export default function App() {
 
       {/* ── Main ── */}
       <main className="main-content">
+        {/* Global Active Task Banner if document is processing */}
+        {activeIngestionDoc && (
+          <div className="global-task-banner">
+            <div className="global-task-left">
+              <span className="global-task-badge">
+                <RefreshCw size={13} className="animate-spin" />
+                Background Ingestion Active
+              </span>
+              <span className="global-task-title">
+                {activeIngestionDoc.title || 'Document'}
+              </span>
+              <span className="global-task-status-text">
+                • {activeIngestionDoc.status}
+              </span>
+            </div>
+
+            <div className="global-task-right">
+              <span className="global-task-hint">
+                Running asynchronously • Facts committed in real-time
+              </span>
+              {activeTab !== 'reconciliation' && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setActiveTab('reconciliation')}
+                >
+                  Explore Reconciliation &rarr;
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Metrics banner — fade-up on scroll */}
         <div className="metrics-banner" ref={metricsRef}>
           {METRICS.map((m) => (

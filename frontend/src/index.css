@@ -1111,3 +1111,235 @@ body {
   border-left: 3px solid var(--brand);
   padding-left: 12px;
 }
+
+/* ============================================================
+   GLOBAL BACKGROUND TASK BANNER
+   ============================================================ */
+.global-task-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  margin-bottom: 24px;
+  background: rgba(235, 114, 59, 0.07);
+  border: 1px solid rgba(235, 114, 59, 0.25);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.2s ease;
+  flex-wrap: wrap;
+}
+
+.global-task-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.global-task-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: var(--brand);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.global-task-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-task-status-text {
+  font-size: 0.8125rem;
+  color: var(--brand-dark, #b54c1e);
+  font-weight: 500;
+}
+
+.global-task-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.global-task-hint {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+  .global-task-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .global-task-right {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* ============================================================
+   STATUS NOTICE BANNER (Documents page)
+   ============================================================ */
+.status-notice-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+}
+
+.status-notice-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: rgba(235, 114, 59, 0.12);
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.status-notice-content {
+  flex: 1;
+}
+
+.status-notice-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.status-notice-desc {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.text-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--brand);
+  font-weight: 600;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.text-link-btn:hover {
+  color: var(--brand-dark, #b54c1e);
+}
+
+/* ============================================================
+   PDF MODAL VIEWER
+   ============================================================ */
+.pdf-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(24, 25, 28, 0.45);
+  backdrop-filter: blur(5px);
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+  padding: 20px;
+}
+
+.pdf-modal-container {
+  background: var(--bg-white);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  box-shadow: 0 16px 56px rgba(24, 25, 28, 0.22);
+  width: min(960px, 100%);
+  height: min(88vh, 880px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideInRight 0.18s ease;
+}
+
+.pdf-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-white);
+  flex-shrink: 0;
+}
+
+.pdf-modal-body {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background: #525659;
+  position: relative;
+}
+
+.pdf-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* Document card external link icon */
+.doc-ext-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+}
+.doc-ext-link-icon:hover {
+  background: var(--bg-surface);
+  color: var(--brand);
+}
+
+/* Reconciliation PDF jump link */
+.rel-doc-pdf-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--brand);
+  background: rgba(235, 114, 59, 0.08);
+  border: 1px solid rgba(235, 114, 59, 0.2);
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.rel-doc-pdf-link:hover {
+  background: var(--brand);
+  color: #ffffff;
+  border-color: var(--brand);
+}
+

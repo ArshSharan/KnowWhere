@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   GitCompare, CheckCircle2, XCircle, HelpCircle,
-  FileText, RefreshCw,
+  FileText, RefreshCw, ExternalLink, Search, Filter,
 } from 'lucide-react';
+import { fetchRelationships, getDocumentFileUrl } from '../api';
+import EvidenceDrawer from '../components/EvidenceDrawer';
 
 function SkeletonRelCard() {
   return (
@@ -31,20 +33,30 @@ function SkeletonRelCard() {
     </div>
   );
 }
-import { fetchRelationships } from '../api';
-import EvidenceDrawer from '../components/EvidenceDrawer';
 
 export default function ReconciliationHub() {
   const [relationships, setRelationships] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedEvidenceFact, setSelectedEvidenceFact] = useState(null);
 
   const loadRelationships = async () => {
     setLoading(true);
     try {
-      const data = await fetchRelationships();
-      setRelationships(data);
+      // Fetch global feed (limit 200) + specifically fetch contradicts and corroborates to guarantee no truncations
+      const [allData, corrobData, contraData] = await Promise.all([
+        fetchRelationships(null, 200).catch(() => []),
+        fetchRelationships('corroborates', 200).catch(() => []),
+        fetchRelationships('contradicts', 200).catch(() => []),
+      ]);
+
+      const map = new Map();
+      allData.forEach((r) => map.set(r.id, r));
+      corrobData.forEach((r) => map.set(r.id, r));
+      contraData.forEach((r) => map.set(r.id, r));
+
+      setRelationships(Array.from(map.values()));
     } catch (err) {
       console.error('Failed to load relationships:', err);
     } finally {
@@ -61,9 +73,22 @@ export default function ReconciliationHub() {
     reconciled_by_context: relationships.filter((r) => r.relationship === 'reconciled_by_context').length,
   };
 
-  const filtered = relationships.filter((r) =>
-    filter === 'all' ? true : r.relationship === filter
-  );
+  const filtered = relationships.filter((r) => {
+    const matchesCategory = filter === 'all' ? true : r.relationship === filter;
+    if (!matchesCategory) return false;
+
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (r.fact_a_entity && r.fact_a_entity.toLowerCase().includes(q)) ||
+      (r.fact_b_entity && r.fact_b_entity.toLowerCase().includes(q)) ||
+      (r.fact_a_attribute && r.fact_a_attribute.toLowerCase().includes(q)) ||
+      (r.fact_b_attribute && r.fact_b_attribute.toLowerCase().includes(q)) ||
+      (r.fact_a_value && String(r.fact_a_value).toLowerCase().includes(q)) ||
+      (r.fact_b_value && String(r.fact_b_value).toLowerCase().includes(q)) ||
+      (r.explanation && r.explanation.toLowerCase().includes(q))
+    );
+  });
 
   const getBadgeIcon = (type) => {
     switch (type) {
@@ -96,35 +121,55 @@ export default function ReconciliationHub() {
         </button>
       </div>
 
-      {/* Filter pills */}
-      <div className="filter-row">
-        <button
-          className={`filter-pill ${filter === 'all' ? 'active' : ''}`}
-          onClick={() => setFilter('all')}
-        >
-          All ({counts.all})
-        </button>
-        <button
-          className={`filter-pill ${filter === 'corroborates' ? 'active' : ''}`}
-          onClick={() => setFilter('corroborates')}
-          style={filter !== 'corroborates' ? { borderColor: 'rgba(30,142,90,0.3)', color: 'var(--rel-corroborates-fg)' } : {}}
-        >
-          <CheckCircle2 size={13} /> Corroborates ({counts.corroborates})
-        </button>
-        <button
-          className={`filter-pill ${filter === 'contradicts' ? 'active' : ''}`}
-          onClick={() => setFilter('contradicts')}
-          style={filter !== 'contradicts' ? { borderColor: 'rgba(217,96,62,0.3)', color: 'var(--rel-contradicts-fg)' } : {}}
-        >
-          <XCircle size={13} /> Contradicts ({counts.contradicts})
-        </button>
-        <button
-          className={`filter-pill ${filter === 'reconciled_by_context' ? 'active' : ''}`}
-          onClick={() => setFilter('reconciled_by_context')}
-          style={filter !== 'reconciled_by_context' ? { borderColor: 'rgba(184,132,42,0.3)', color: 'var(--rel-reconciled-fg)' } : {}}
-        >
-          <HelpCircle size={13} /> Reconciled by context ({counts.reconciled_by_context})
-        </button>
+      {/* Filter and Search Bar */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        {/* Filter pills */}
+        <div className="filter-row" style={{ marginBottom: 0 }}>
+          <button
+            className={`filter-pill ${filter === 'all' ? 'active' : ''}`}
+            onClick={() => setFilter('all')}
+            id="filter-all"
+          >
+            All ({counts.all})
+          </button>
+          <button
+            className={`filter-pill ${filter === 'corroborates' ? 'active' : ''}`}
+            onClick={() => setFilter('corroborates')}
+            style={filter !== 'corroborates' ? { borderColor: 'rgba(30,142,90,0.3)', color: 'var(--rel-corroborates-fg)' } : {}}
+            id="filter-corroborates"
+          >
+            <CheckCircle2 size={13} /> Corroborates ({counts.corroborates})
+          </button>
+          <button
+            className={`filter-pill ${filter === 'contradicts' ? 'active' : ''}`}
+            onClick={() => setFilter('contradicts')}
+            style={filter !== 'contradicts' ? { borderColor: 'rgba(217,96,62,0.3)', color: 'var(--rel-contradicts-fg)' } : {}}
+            id="filter-contradicts"
+          >
+            <XCircle size={13} /> Contradicts ({counts.contradicts})
+          </button>
+          <button
+            className={`filter-pill ${filter === 'reconciled_by_context' ? 'active' : ''}`}
+            onClick={() => setFilter('reconciled_by_context')}
+            style={filter !== 'reconciled_by_context' ? { borderColor: 'rgba(184,132,42,0.3)', color: 'var(--rel-reconciled-fg)' } : {}}
+            id="filter-reconciled"
+          >
+            <HelpCircle size={13} /> Reconciled by context ({counts.reconciled_by_context})
+          </button>
+        </div>
+
+        {/* Search inside relationships */}
+        <div style={{ position: 'relative', flex: 1, minWidth: 220, maxWidth: 360 }}>
+          <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <input
+            type="text"
+            className="input-field"
+            placeholder="Search reconciled pairs…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ paddingLeft: '2.25rem', height: 36, fontSize: '0.8125rem' }}
+          />
+        </div>
       </div>
 
       {/* Feed */}
@@ -135,10 +180,10 @@ export default function ReconciliationHub() {
       ) : filtered.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon"><GitCompare size={22} /></div>
-          <h3>No {filter !== 'all' ? `"${getBadgeLabel(filter)}"` : ''} relationships yet</h3>
+          <h3>No {filter !== 'all' ? `"${getBadgeLabel(filter)}"` : ''} relationships match</h3>
           <p>
-            Reconciliation runs automatically after two or more PDFs are ingested.
-            You can also trigger it manually from the Documents page.
+            {searchQuery ? `No pairs found matching "${searchQuery}". Try clearing the search.` :
+            'Reconciliation runs automatically as documents are ingested. You can also trigger it manually from the Documents page.'}
           </p>
         </div>
       ) : (
@@ -173,6 +218,18 @@ export default function ReconciliationHub() {
                     <FileText size={12} />
                     <span>{rel.fact_a_doc_title || 'Document A'}</span>
                     <span>· p.{rel.fact_a_page || '?'}</span>
+                    {rel.fact_a_doc_id && (
+                      <a
+                        href={`${getDocumentFileUrl(rel.fact_a_doc_id)}#page=${rel.fact_a_page || 1}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rel-doc-pdf-link"
+                        title={`Open source PDF at page ${rel.fact_a_page || 1}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink size={11} /> PDF
+                      </a>
+                    )}
                   </div>
                   <div className="rel-fact-entity">{rel.fact_a_entity}</div>
                   <div className="rel-fact-attr">{rel.fact_a_attribute}</div>
@@ -211,6 +268,18 @@ export default function ReconciliationHub() {
                     <FileText size={12} />
                     <span>{rel.fact_b_doc_title || 'Document B'}</span>
                     <span>· p.{rel.fact_b_page || '?'}</span>
+                    {rel.fact_b_doc_id && (
+                      <a
+                        href={`${getDocumentFileUrl(rel.fact_b_doc_id)}#page=${rel.fact_b_page || 1}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rel-doc-pdf-link"
+                        title={`Open source PDF at page ${rel.fact_b_page || 1}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink size={11} /> PDF
+                      </a>
+                    )}
                   </div>
                   <div className="rel-fact-entity">{rel.fact_b_entity}</div>
                   <div className="rel-fact-attr">{rel.fact_b_attribute}</div>

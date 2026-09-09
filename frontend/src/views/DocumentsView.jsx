@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { UploadCloud, FileText, Layers, RefreshCw, Eye, AlertCircle } from 'lucide-react';
-import { fetchDocuments, uploadDocument, triggerReconcile } from '../api';
+import { UploadCloud, FileText, Layers, RefreshCw, Eye, AlertCircle, ExternalLink, X, Compass } from 'lucide-react';
+import { fetchDocuments, uploadDocument, triggerReconcile, getDocumentFileUrl } from '../api';
 
 // ── Status string parser ──────────────────────────────────────────────────
 // Converts raw DB status like "extracting: 24/48 pages" → { label, phase, progress }
-function parseStatus(rawStatus = '') {
+export function parseStatus(rawStatus = '') {
   const s = rawStatus.toLowerCase().trim();
 
   if (s === 'done')                 return { label: 'Done',               phase: 'done',       progress: 100 };
@@ -64,12 +64,67 @@ function SkeletonCard() {
   );
 }
 
+// ── PDF Preview Modal ─────────────────────────────────────────────────────
+function PdfPreviewModal({ doc, onClose }) {
+  if (!doc) return null;
+  const fileUrl = getDocumentFileUrl(doc.id);
+
+  return (
+    <div className="pdf-modal-overlay" onClick={onClose}>
+      <div className="pdf-modal-container" onClick={(e) => e.stopPropagation()}>
+        <div className="pdf-modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <div className="fact-type-tile mint" style={{ flexShrink: 0 }}>
+              <FileText size={16} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {doc.title || 'Source PDF'}
+              </h3>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {doc.page_count ? `${doc.page_count} pages • ` : ''}PDF Preview
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary btn-sm"
+              title="Open full PDF in browser tab"
+            >
+              <ExternalLink size={13} /> Full tab
+            </a>
+            <button
+              className="fact-detail-close"
+              onClick={onClose}
+              title="Close viewer"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32 }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+        <div className="pdf-modal-body">
+          <iframe
+            src={fileUrl}
+            title={doc.title || 'PDF Document'}
+            className="pdf-iframe"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DocumentsView({ onSelectDocument, onNavigateReconcile }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [previewPdfDoc, setPreviewPdfDoc] = useState(null);
   const fileInputRef = useRef(null);
 
   const loadDocs = useCallback(async () => {
@@ -86,14 +141,10 @@ export default function DocumentsView({ onSelectDocument, onNavigateReconcile })
   useEffect(() => {
     loadDocs();
 
-    // Poll every 2s if any doc is still processing, else every 5s
+    // Poll every 2.5s for live progress updates
     const interval = setInterval(() => {
-      setDocuments((prev) => {
-        const hasProcessing = prev.some((d) => d.status !== 'done' && d.status !== 'failed');
-        loadDocs();
-        return prev; // loadDocs will trigger re-render via setDocuments inside it
-      });
-    }, 2000);
+      loadDocs();
+    }, 2500);
 
     return () => clearInterval(interval);
   }, [loadDocs]);
@@ -110,7 +161,7 @@ export default function DocumentsView({ onSelectDocument, onNavigateReconcile })
       if (res.duplicate) {
         setUploadStatus({ stage: 'ok', message: 'Already ingested — no need to re-upload.' });
       } else {
-        setUploadStatus({ stage: 'processing', message: 'PDF uploaded. Extracting facts in the background…' });
+        setUploadStatus({ stage: 'processing', message: 'PDF uploaded! Fact extraction is running asynchronously in the background.' });
       }
       await loadDocs();
     } catch (err) {
@@ -129,6 +180,9 @@ export default function DocumentsView({ onSelectDocument, onNavigateReconcile })
       alert(`Reconciliation error: ${err.message}`);
     }
   };
+
+  // Check if any document is processing
+  const processingDoc = documents.find((d) => d.status !== 'done' && d.status !== 'failed');
 
   return (
     <div>
@@ -159,11 +213,34 @@ export default function DocumentsView({ onSelectDocument, onNavigateReconcile })
         )}
       </div>
 
+      {/* Background Processing Reassurance Banner */}
+      <div className="status-notice-banner">
+        <div className="status-notice-icon">
+          <Compass size={18} />
+        </div>
+        <div className="status-notice-content">
+          <div className="status-notice-title">
+            Asynchronous &amp; State-Preserved Processing
+          </div>
+          <div className="status-notice-desc">
+            Fact extraction, vector embeddings, and cross-document reconciliation run safely in the background on the server.
+            Your facts and relationships are saved continuously to the database. You can freely switch to{' '}
+            <button
+              className="text-link-btn"
+              onClick={onNavigateReconcile}
+            >
+              Reconciliation
+            </button>
+            {' '}or explore other views anytime without losing progress or interrupting active tasks.
+          </div>
+        </div>
+      </div>
+
       {/* Section header */}
       <div className="section-header">
         <div className="section-title">
           <h2>Ingested documents</h2>
-          <p>Click any document to inspect its extracted facts and verifiable citations</p>
+          <p>Click any document to inspect its extracted facts, or click "View PDF" to open the source document</p>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={loadDocs} id="btn-refresh-docs">
           <RefreshCw size={13} /> Refresh
@@ -202,7 +279,19 @@ export default function DocumentsView({ onSelectDocument, onNavigateReconcile })
               >
                 <div className="doc-card-header">
                   <div className="doc-title">{doc.title || 'Untitled document'}</div>
-                  <span className={`status-badge ${phase}`}>{label}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <a
+                      href={getDocumentFileUrl(doc.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      title="Open source PDF in new tab"
+                      className="doc-ext-link-icon"
+                    >
+                      <ExternalLink size={13} />
+                    </a>
+                    <span className={`status-badge ${phase}`}>{label}</span>
+                  </div>
                 </div>
 
                 <div className="doc-meta">
@@ -229,23 +318,55 @@ export default function DocumentsView({ onSelectDocument, onNavigateReconcile })
                 <div className="doc-actions">
                   {isDone && (
                     <>
-                      <button className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); onSelectDocument(doc.id); }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={(e) => { e.stopPropagation(); onSelectDocument(doc.id); }}
+                      >
                         <Eye size={13} /> View facts
                       </button>
-                      <button className="btn btn-secondary btn-sm" onClick={(e) => handleReconcile(e, doc.id)} title="Re-run cross-document reconciliation">
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={(e) => { e.stopPropagation(); setPreviewPdfDoc(doc); }}
+                        title="Preview PDF document"
+                      >
+                        <FileText size={13} /> View PDF
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={(e) => handleReconcile(e, doc.id)}
+                        title="Re-run cross-document reconciliation"
+                      >
                         <RefreshCw size={13} /> Reconcile
                       </button>
                     </>
                   )}
                   {isProcessing && (
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <RefreshCw size={12} className="animate-spin" />
-                      {label}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: '0.8125rem', color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <RefreshCw size={12} className="animate-spin" />
+                        {label}
+                      </div>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={(e) => { e.stopPropagation(); setPreviewPdfDoc(doc); }}
+                        title="Preview uploaded PDF"
+                      >
+                        <FileText size={13} /> View PDF
+                      </button>
                     </div>
                   )}
                   {isFailed && (
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--rel-contradicts-fg)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <AlertCircle size={12} /> Ingestion failed
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: '0.8125rem', color: 'var(--rel-contradicts-fg)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <AlertCircle size={12} /> Ingestion failed
+                      </div>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={(e) => { e.stopPropagation(); setPreviewPdfDoc(doc); }}
+                        title="View uploaded PDF"
+                      >
+                        <FileText size={13} /> View PDF
+                      </button>
                     </div>
                   )}
                 </div>
@@ -254,6 +375,12 @@ export default function DocumentsView({ onSelectDocument, onNavigateReconcile })
           })}
         </div>
       )}
+
+      {/* PDF Modal Viewer */}
+      <PdfPreviewModal
+        doc={previewPdfDoc}
+        onClose={() => setPreviewPdfDoc(null)}
+      />
     </div>
   );
 }
